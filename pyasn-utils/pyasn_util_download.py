@@ -143,8 +143,8 @@ if args.dates_from_file:
         dates_to_get.append(dt)
 
     for dt in dates_to_get:
-        # FIXME: currently v4 only. should understand v4/v6 options, and possibly use FTP method
-        url_dir = 'http://archive.routeviews.org/bgpdata/%d.%02d/RIBS/' % (dt.year, dt.month)
+        # FIXME: currently v4+v6 only. should understand v4/v6 options, and possibly use FTP method
+        url_dir = 'http://archive.routeviews.org/route-views4/bgpdata/%d.%02d/RIBS/' % (dt.year, dt.month)
         print('Searching %s for %d-%02d-%02d...' % (url_dir, dt.year, dt.month, dt.day), end=' ')
         stdout.flush()
 
