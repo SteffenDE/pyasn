@@ -43,15 +43,21 @@ else:
 # Parse command line options
 # Note: --latest might be changes to --46, instead of --4, in the future
 parser = ArgumentParser(description="Script to download MRT/RIB BGP archives (from RouteViews).")
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('--latestv4', '-4', '--latest', action='store_true',
-                   help='Grab lastest IPV4 data')
-group.add_argument('--latestv6', '-6', action='store_true', help='Grab lastest IPV6 data')
-group.add_argument('--latestv46', '-46', action='store_true', help='Grab lastest IPV4/V6 data')
+group = parser.add_mutually_exclusive_group(required=False)
+group.add_argument('--latest', action='store_true')
+group.add_argument('--latestv4', action='store_true')
+group.add_argument('--latestv6', action='store_true')
+group.add_argument('--latestv46', action='store_true')
 group.add_argument('--version', action='store_true')
 group.add_argument('--dates-from-file', '-f', action='store',
                    help='Grab IPV4 archives for specifc dates (one date, YYYYMMDD, per line)')
+group.add_argument('--date', action='store',
+                   help='Grab IPV4+IPv6 archives for specifc date (YYYYMMDD)')
 parser.add_argument('--filename', action='store', help="Specify name with which the file will be saved")
+parser.add_argument('--ipversion', action='store', help="v4, v6 or dualstack", default='v4')
+parser.add_argument('-4', dest='ipversion', action='store_const', const='v4')
+parser.add_argument('-6', dest='ipversion', action='store_const', const='v6')
+parser.add_argument('-46', dest='ipversion', action='store_const', const='dualstack')
 args = parser.parse_args()
 
 
@@ -107,6 +113,23 @@ def find_latest_in_ftp(server, archive_root, sub_dir, print_progress=True):
     return (server, filepath, filename)
 
 
+def find_specific_in_ftp(server, archive_root, sub_dir, dt, print_progress=True):
+    """Returns (server, filepath, filename) for the a file in an FTP archive for the given date"""
+    ftp = FTP(server)
+    ftp.login()
+    month = "%d.%02d" % (dt.year, dt.month)
+    filepath = f"{archive_root}/{month}/{sub_dir}"
+    filebase = "rib.%d%02d%02d" % (dt.year, dt.month, dt.day)
+    ftp.cwd(filepath)
+    files = sorted(ftp.nlst())  # e.g. 'route-views6/bgpdata/2016.12'
+    filename = max(filter(lambda file:
+        f"{filebase}.06" in file
+        or f"{filebase}.05" in file
+        or f"{filebase}.00" in file, files))
+    # print(files)
+    return (server, filepath, filename)
+
+
 def find_latest_routeviews(archive_ipv):
     # RouteViews archives are as follows:
     # ftp://archive.routeviews.org/datapath/YYYYMM/ribs/XXXX
@@ -123,9 +146,16 @@ if args.version:
     print("MRT/RIB downloader version %s." % __version__)
 
 
-if args.latestv4 or args.latestv6 or args.latestv46:
-    # Download latest RouteViews MRT/RIB archive
-    srvr, rp, fn = find_latest_routeviews(4 if args.latestv4 else 6 if args.latestv6 else '46')
+if args.date:
+    archive_ipv = '4' if args.ipversion == "v4" else '6' if args.ipversion == "v6" else '46'
+    s = args.date
+    dt = date(int(s[:4]), int(s[4:6]), int(s[6:8]))  # Dates are strangely YYYYMMDD :)
+    srvr, rp, fn = find_specific_in_ftp(server='archive.routeviews.org',
+                                        archive_root='bgpdata' if archive_ipv == '4' else
+                                                     'route-views6/bgpdata' if archive_ipv == '6' else
+                                                     'route-views4/bgpdata',  # 4+6
+                                        sub_dir='RIBS',
+                                        dt=dt)
     ftp_download(srvr, rp, fn, fn)
 
 
@@ -179,3 +209,24 @@ if args.dates_from_file:
 
         print('%s\t%s\t%s\t%s' % (dt, size, url_full, ret))
         stdout.flush()
+
+
+if args.latestv4:
+    args.latest = True
+    args.ipversion = "v4"
+
+
+if args.latestv6:
+    args.latest = True
+    args.ipversion = "v6"
+
+
+if args.latestv46:
+    args.latest = True
+    args.ipversion = "dualstack"
+
+
+if args.latest or not (args.version or args.date or args.dates_from_file):
+    # Download latest RouteViews MRT/RIB archive
+    srvr, rp, fn = find_latest_routeviews(4 if args.ipversion == "v4" else 6 if args.ipversion == "v6" else '46')
+    ftp_download(srvr, rp, fn, fn)
